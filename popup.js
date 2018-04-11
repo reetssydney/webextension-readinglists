@@ -20,6 +20,10 @@ function getCsrfToken(origin) {
     .then(res => res.query.tokens.csrftoken);
 }
 
+function parseDefaultListId(listsResult) {
+    return listsResult.lists.filter(list => list.default)[0].id;
+}
+
 function getDefaultListId(url) {
     return fetch(getReadingListsUrlForOrigin(url.origin), { credentials: 'same-origin' })
     .then(res => {
@@ -28,7 +32,7 @@ function getDefaultListId(url) {
             .then(res => getDefaultListId(url));
         }
         return res.json()
-        .then(res => res.lists.filter(list => list.default)[0].id);
+        .then(res => parseDefaultListId(res));
     })
 }
 
@@ -47,12 +51,16 @@ function show(id) {
     setTimeout(() => { document.getElementById(id).style.display = 'block' }, 50);
 }
 
-function showLoginPage(url) {
-    let loginUrl = `${url.origin}/wiki/Special:UserLogin?returnto=${encodeURIComponent(parseTitleFromUrl(url))}`;
+function constructLoginUrl(url) {
+    let result = `${url.origin}/wiki/Special:UserLogin?returnto=${encodeURIComponent(parseTitleFromUrl(url))}`;
     if (url.search) {
-        loginUrl = loginUrl.concat(`&returntoquery=${encodeURIComponent(url.search.slice(1))}`);
+        result = result.concat(`&returntoquery=${encodeURIComponent(url.search.slice(1))}`);
     }
-    browser.tabs.update({ url: loginUrl });
+    return result;
+}
+
+function showLoginPage(url) {
+    browser.tabs.update({ url: constructLoginUrl(url) });
 }
 
 function showLoginPrompt(url) {
@@ -105,7 +113,20 @@ function handleClick(url) {
     return getCsrfToken(url.origin).then(token => handleTokenResult(url, token));
 }
 
-browser.tabs.query({currentWindow: true, active: true}).then(tabs => {
-    return handleClick(new URL(tabs[0].url))
-    .catch(err => showAddToListFailureMessage(err));
-});
+// Attempt a query first so this doesn't break unit testing
+if (browser.tabs.query({})) {
+    browser.tabs.query({currentWindow: true, active: true}).then(tabs => {
+        return handleClick(new URL(tabs[0].url))
+        .catch(err => showAddToListFailureMessage(err));
+    });
+}
+
+module.exports = {
+    testing: {
+        mobileToCanonicalHost,
+        getAddToListPostBody,
+        constructLoginUrl,
+        parseTitleFromUrl,
+        parseDefaultListId
+    }
+};
