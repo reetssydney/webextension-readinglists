@@ -24,11 +24,18 @@ function getDefaultListId(url) {
     return fetch(getReadingListsUrlForOrigin(url.origin), { credentials: 'same-origin' })
     .then(res => {
         if (!res.ok) {
-            return setUpReadingListsForUser(url)
-            .then(res => getDefaultListId(url));
+            return res.json().then((err) => {
+                console.log(err);
+                if (err.title === 'readinglists-db-error-not-set-up') {
+                    return showReadingListOptIn(url);
+                } else {
+                    throw err;
+                }
+            });
+        } else {
+            return res.json()
+            .then(res => res.lists.filter(list => list.default)[0].id);
         }
-        return res.json()
-        .then(res => res.lists.filter(list => list.default)[0].id);
     })
 }
 
@@ -47,6 +54,10 @@ function show(id) {
     setTimeout(() => { document.getElementById(id).style.display = 'block' }, 50);
 }
 
+function hide(id) {
+    document.getElementById(id).style.display = 'none';
+}
+
 function showLoginPage(url) {
     browser.tabs.update({ url: `${url.origin}/wiki/Special:UserLogin?returnto=${parseTitleFromUrl(url)}` });
 }
@@ -63,6 +74,17 @@ function showAddToListSuccessMessage() {
 function showAddToListFailureMessage(res) {
     document.getElementById('failureReason').textContent = res.detail ? res.detail : res.title ? res.title : res.type ? res.type : res;
     show('addToListFailedContainer');
+}
+
+function showReadingListOptIn(url) {
+    document.getElementById('optInButton').onclick = (element) => {
+        hide('syncedListsOptInContainer');
+        return setUpReadingListsForUser(url).then(res => handleClick(url));
+    };
+    document.getElementById('privacyLink').onclick = (element) => {
+        browser.tabs.create({ url: document.getElementById('privacyLink').href });
+    }
+    show('syncedListsOptInContainer');
 }
 
 function mobileToCanonicalHost(url) {
@@ -94,7 +116,11 @@ function addPageToDefaultList(url, listId, token) {
 }
 
 function handleTokenResult(url, token) {
-    return token === '+\\' ? showLoginPrompt(url) : getDefaultListId(url).then(listId => addPageToDefaultList(url, listId, token));
+    return token === '+\\' ? showLoginPrompt(url) : getDefaultListId(url).then(listId => {
+        if (listId) {
+            addPageToDefaultList(url, listId, token);
+        }
+    });
 }
 
 function handleClick(url) {
